@@ -23,6 +23,10 @@ def on_connect(client, userdata, flags, rc):
     else:
         print("Connection failed Return Code : ", rc)
 
+def on_message(client, userdata, message):
+    print("Player", message.payload,"was killed.")
+    print("")
+
 Connected = False  # Global variable for the state of the connection
 
 # Check if the correct number of arguments is provided
@@ -30,7 +34,7 @@ if len(sys.argv) != 3:
     print("Usage: python3 script.py <player_id> <filename>")
     sys.exit(1)
 
-client_name = "player" + sys.argv[1]  # Add player_id to the client name
+client_name = "player-" + sys.argv[1]  # Add player_id to the client name
 filename = sys.argv[2]  # Get filename from command-line arguments
 broker_address = "127.0.0.1"  # Broker address
 port = 1883  # Broker port default for MQTT
@@ -40,18 +44,23 @@ coordinates = read_coordinates(filename)
 
 client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, client_name)  # create new instance
 client.on_connect = on_connect  # attach function to callback
+client.on_message = on_message  # attach function to callback
 client.connect(broker_address, port=port)  # connect to broker (login credentials)
 client.loop_start()  # start the loop
+
 
 while Connected != True:  # Wait for connection
     time.sleep(0.1)
 
+# Subscribe to location/life topic
 try:
     for coord in coordinates:
         client.publish("location/"+client_name, str(coord))
-        time.sleep(2)
+        client.subscribe("location/life")
+        time.sleep(15)
 
 except KeyboardInterrupt:
     print("exiting")
     client.disconnect()
     client.loop_stop()
+    
