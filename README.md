@@ -4,3 +4,6 @@
 
 ## Run Publisher
 >> ./game.sh 
+
+## Generate Test cases
+>> python3 test.py <number_of_players>
