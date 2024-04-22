@@ -19,13 +19,12 @@ def check_player_killed(player, other_players):
     for other_player_id, other_player in enumerate(other_players):
         if other_player and other_player['power'] == 1 and player['power'] == 0 and is_adjacent(player, other_player):
             return True, other_player_id
-        elif player['power'] == 1 and other_player and other_player['power'] == 0 and is_adjacent(other_player, player):
+        elif other_player and player['power'] == 1 and other_player['power'] == 0 and is_adjacent(other_player, player):
             return True, other_player_id
-        elif other_player and other_player['power'] == 1 and player['power'] == 1 and is_adjacent(player, other_player):
-            return True, other_player_id
-        elif other_player and other_player['power'] == 1 and player['power'] == 1 and is_adjacent(other_player, player):
+        elif other_player and is_adjacent(player, other_player) and is_adjacent(other_player, player):
             return True, other_player_id
     return False, None
+
 
 def on_message(client, userdata, message):
     player_name = message.topic
@@ -43,8 +42,21 @@ def on_message(client, userdata, message):
             
             if killed:
                 print("Player {} was killed by player {}.".format(killed_player_id, player_id))
+                all_players[killed_player_id]['power'] = 0  # Set killed player's power to 0
+                client.publish("location/life", str(killed_player_id))
                 # Unsubscribe from the killed player's topic
                 client.unsubscribe("location/player-{}".format(killed_player_id))
+                # Decrement the number of alive players
+                alive_players[0] -= 1
+                            
+                # If there's only one player left, they are the winner
+                if alive_players[0] == 1:
+                    print("Congratulations! Player {} is the winner!".format(all_players.index(None) + 1))
+                    exit()
+                # If no one won and more than one player is alive, it's a tie
+                elif alive_players[0] > 1 and all_players.count(None) == 0:
+                    print("It's a tie! No one won.")
+                    exit()
 
 def subscribe_to_players(client, total_players):
     for i in range(1, total_players + 1):
@@ -60,6 +72,7 @@ client.on_message = on_message
 client.connect(broker_address)
 client.loop_start()
 
+
 # Take the total number of players as argument
 if len(sys.argv) != 2:
     print("Usage: python3 sub.py <total_players>")
@@ -72,6 +85,9 @@ all_players = [None] * total_players
 
 # Subscribe to topics for all players
 subscribe_to_players(client, total_players)
+
+# List to store the number of alive players
+alive_players = [total_players]
 
 try:
     while True:
