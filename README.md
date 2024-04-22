@@ -1,5 +1,5 @@
 ## Run subscriber
->> python3 s2.py 3
+>> python3 s.py 3
 
 
 ## Run Publisher
