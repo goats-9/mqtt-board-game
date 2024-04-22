@@ -24,8 +24,10 @@ def on_connect(client, userdata, flags, rc):
         print("Connection failed Return Code : ", rc)
 
 def on_message(client, userdata, message):
-    print("Player", message.payload,"was killed.")
-    print("")
+    if message.topic == "location/life":
+        print("Player Died:", message.payload.decode())
+    else:
+        print("Player", message.payload,"was killed.")
 
 Connected = False  # Global variable for the state of the connection
 
@@ -48,19 +50,18 @@ client.on_message = on_message  # attach function to callback
 client.connect(broker_address, port=port)  # connect to broker (login credentials)
 client.loop_start()  # start the loop
 
+# Subscribe to location/life topic
+client.subscribe("location/life")
 
-while Connected != True:  # Wait for connection
+while not Connected:  # Wait for connection
     time.sleep(0.1)
 
-# Subscribe to location/life topic
 try:
     for coord in coordinates:
         client.publish("location/"+client_name, str(coord))
-        client.subscribe("location/life")
-        time.sleep(15)
+        time.sleep(10)
 
 except KeyboardInterrupt:
-    print("exiting")
+    print("Exiting")
     client.disconnect()
     client.loop_stop()
-    
