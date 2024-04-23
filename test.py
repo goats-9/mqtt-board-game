@@ -12,7 +12,7 @@ def generate_match_data(num_rounds):
     return match_data
 
 def write_match_data_to_file(match_data, player_num,num_players):
-    filename = f"player_{player_num}.txt"
+    filename = f"player-{player_num}.txt"
     with open(filename, 'w') as file:
         file.write(f"{num_players}\n")
         for round_data in match_data:
