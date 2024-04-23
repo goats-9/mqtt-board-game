@@ -55,7 +55,7 @@ def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMess
     # Push message to queue if id is larger
     if not players[player_num]:
         players[player_num].append(recv_msg)
-    elif recv_msg['id'] > players[player_num][-1]['id']:
+    elif recv_msg['id'] > players[player_num][-1]['id'] or recv_msg['status'] != players[player_num][-1]['status']:
         players[player_num].append(recv_msg)
 
 # Initialization
@@ -190,6 +190,7 @@ try:
             print(f'Player {idx} kills player {num} at turn {jj}.')
             # Update health status for next message
             killed = True
+            break
     if not killed:
         print(f'Winner: player {num}!')
 except KeyboardInterrupt:
