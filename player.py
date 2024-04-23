@@ -181,7 +181,7 @@ try:
             if idx == num or move_queue[0]['power'] == 0 or not is_adjacent(players[num][0]['loc'], move_queue[0]['loc']):
                 continue
             # Print kill status
-            print(f'Player {idx} kills player {num}.')
+            print(f'Player {idx} kills player {num} at turn {j}.')
             # Update health status for next message
             killed = True
     if not killed:
