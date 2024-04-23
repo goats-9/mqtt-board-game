@@ -136,7 +136,8 @@ try:
     # Players keep playing until they are killed
     while len(players.keys()) > 1:
         # Play next move
-        j = players[num][-1]['id'] + 1
+        jj = players[num][-1]['id'] + 1
+        j = jj%len(moves)
         move = moves[j]
         # Create new status
         player_stat = {
@@ -181,7 +182,7 @@ try:
             if idx == num or move_queue[0]['power'] == 0 or not is_adjacent(players[num][0]['loc'], move_queue[0]['loc']):
                 continue
             # Print kill status
-            print(f'Player {idx} kills player {num} at turn {j}.')
+            print(f'Player {idx} kills player {num} at turn {jj}.')
             # Update health status for next message
             killed = True
     if not killed:
