@@ -48,7 +48,7 @@ def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMess
     global players,  num
     recv_msg = ast.literal_eval(message.payload.decode('utf-8'))
     player_num = int(message.topic.split('/')[-1])
-    # print("recv", player_num, recv_msg)
+    print("recv", player_num, recv_msg)
     # Ignore message if player is killed (deleted from game state)
     if player_num not in players.keys():
         return
@@ -82,6 +82,8 @@ with open(f'{client_name}.txt') as fh:
     # Moves
     L = L[1:]
     moves = [[int(x) for x in l.split()] for l in L]
+# Add a dummy move to decide the winner
+moves.append([0, 0, 0])
 
 # Set up players' state
 for i in range(1,N+1):
@@ -135,8 +137,7 @@ try:
     # Players keep playing until they are killed
     while len(players.keys()) > 1:
         # Play next move
-        jj = players[num][-1]['id'] + 1
-        j = jj%len(moves)
+        j = players[num][-1]['id'] + 1
         move = moves[j]
         # Create new status
         player_stat = {
@@ -187,7 +188,7 @@ try:
             if idx == num or move_queue[0]['power'] == 0 or not is_adjacent(players[num][0]['loc'], move_queue[0]['loc']):
                 continue
             # Print kill status
-            print(f'Player {idx} kills player {num} at turn {jj}.')
+            print(f'Player {idx} kills Player {num} at turn {j + 1}.')
             # Update health status for next message
             killed = True
             break
