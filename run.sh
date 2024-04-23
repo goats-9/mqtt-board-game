@@ -8,7 +8,7 @@ num_players=$(head -n 1 "$filename")
 
 # Start the MQTT publisher for each player in the background
 for ((i = 1; i <= $num_players; i++)); do
-    python3 pub.py "$i" "player-$i.txt" & pid=$!
+    python3 player.py -n $i & pid=$!
     echo "Process \"$i\" started";
     PID_LIST+=" $pid";
 done
