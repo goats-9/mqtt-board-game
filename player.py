@@ -8,22 +8,23 @@ Purpose     : Client script to connect to board game server and handle gameplay.
 #########
 # Imports
 #########
-from paho.mqtt.reasoncodes import ReasonCode
 import paho.mqtt.client as mqttClient
 import time
 import ast
 import argparse
+from collections import deque
 
 #################
 # Game state info
 #################
 
-players = {}        # Dictionary of player states indexed by player name
+players = {}        # Dictionary of queues of player states after each move indexed by player number
 num = 0             # Player number assigned
 server_addr = ''    # IP address of server to connect to
 server_port = 0     # Port number of server to connect to
-N = 0               # Number of players alive
+N = 0               # Total number of players
 moves = []          # List of moves made by the player
+killed = False      # Flag to determine whether the player has been killed
 
 def is_adjacent(p1: dict, p2: dict):
     """ Function to check whether locations `p1` and `p2` are adjacent to each other. """
@@ -42,12 +43,19 @@ def on_connect(client: mqttClient.Client, userdata, flags, rc):
         print("Connection failed, return code", rc)
 
 def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMessage):
-    """ Callback to update opponent player status. """
-    global players, num
+    """ Callback to update game state. """
+    global players,  num
     recv_msg = ast.literal_eval(message.payload.decode('utf-8'))
     player_num = int(message.topic.split('/')[-1])
-    print("recv", player_num, recv_msg)
-    players[player_num] = recv_msg
+    # print("recv", player_num, recv_msg)
+    # Ignore message if player is killed (deleted from game state)
+    if player_num not in players.keys():
+        return
+    # Push message to queue if id is larger
+    if not players[player_num]:
+        players[player_num].append(recv_msg)
+    elif recv_msg['id'] > players[player_num][-1]['id']:
+        players[player_num].append(recv_msg)
 
 # Initialization
 
@@ -73,31 +81,32 @@ with open(f'{client_name}.txt') as fh:
     # Moves
     L = L[1:]
     moves = [[int(x) for x in l.split()] for l in L]
+# Dummy move at the end to determine winner
+moves.append([0, 0, 0])
 
 # Set up players' state
 for i in range(1,N+1):
     player_name = f'player-{i}'
-    players[i] = {
-        'loc': {
-            'x': 0,
-            'y': 0,
-            'i': -1,
-        },
-        'power': 0,
-        'status': 0,
-    }
+    players[i] = deque()
+
+players[num].append({
+    'id': -1,
+    'loc': {
+        'x': 0,
+        'y': 0,      
+    },
+    'power': 0,
+    'status': 1,
+})
 
 # Player flow
 
 # Setup player and connect to MQTT broker
-client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, client_name, clean_session=True)
+client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, client_name)
 client.on_connect = on_connect
 client.on_message = on_message
 
 client.connect(server_addr, server_port)
-# Publish health/connection status
-players[num]['status'] = 1
-client.publish(f'players/{num}', str(players[num]))
 
 # Start player loop
 client.loop_start()
@@ -105,66 +114,82 @@ client.loop_start()
 # Subscribe to player topics
 for i in range(1,N+1):
     if i != num:
-        client.subscribe(f'players/{i}')
+        client.subscribe(f'players/{i}', qos=2)
 
 try:
     # Wait for players to be online
     while True:
+        # Publish health/connection status
+        client.publish(f'players/{num}', str(players[num][-1]), qos=2)
         player_cnt = 0
-        for player in players.values():
-            player_cnt += player['status']
-        print(player_cnt)
+        for idx, player in players.items():
+            # Check player status at front of the queue
+            if not player:
+                continue
+            while player and player[0]['id'] != -1:
+                player.popleft()
+            player_cnt += player[0]['status']
         if player_cnt >= N:
             break
+        # Wait to receive opponents connection status
         time.sleep(1)
-    j = 0
-    # Players keep playing until they are the only ones left on the server
-    while True:
-        # Find number of players on server
-        player_cnt = 0
-        for player in players.values():
-            player_cnt += player['status']
-        if player_cnt <= 1:
-            break
+    # Players keep playing until they are killed
+    while len(players.keys()) > 1:
+        # Play next move
+        j = players[num][-1]['id'] + 1
         move = moves[j]
-        # Publish updated status info
-        players[num]['loc'] = {
-            'x': move[0],
-            'y': move[1],
-            'i': j,
+        # Create new status
+        player_stat = {
+            'id': j,
+            'loc': {
+                'x': move[0],
+                'y': move[1],
+            },
+            'status': int(not killed),
+            'power': move[2]
         }
-        players[num]['power'] = move[2]
-        client.publish(f'players/{num}', str(players[num]), retain=True, qos=2)
+        # Update own game state
+        players[num].append(player_stat)
+        # Publish to other players
+        client.publish(f'players/{num}', str(player_stat), qos=2)
         # If player is dead, disconnect
-        if players[num]['status'] == 0:
+        if killed:
             break
-        # Listen to other alive players' updated info
-        # cnt maintains the number of players whose info is updated.
+        # Collect updated info
         while True:
+            # Count of players whose info for current move is available
             cnt = 0
-            for player in players.values():
-                if players[num]['loc']['i'] == player['loc']['i']:
+            for _, move_queue in players.items():
+                while move_queue and move_queue[0]['id'] < j:
+                    move_queue.popleft()
+                if move_queue and move_queue[0]['id'] == j:
                     cnt += 1
-            if cnt >= player_cnt:
+            # All players alive must have up-to-date status
+            if cnt == len(players.keys()):
                 break
-        print(cnt, player_cnt)
+        # Find dead players and delete them
+        del_list = []
+        for idx, move_queue in players.items():
+            if move_queue[0]['status'] == 0:
+                del_list.append(idx)
+        for val in del_list:
+            del players[val]
         # Check if we are dead
-        if players[num]['power'] == 1:
+        if players[num][0]['power'] == 1:
             continue
-        for i in range(1,N+1):
-            if i == num or players[i]['power'] == 0 or not is_adjacent(players[num]['loc'], players[i]['loc']):
+        for idx, move_queue in players.items():
+            if idx == num or move_queue[0]['power'] == 0 or not is_adjacent(players[num][0]['loc'], move_queue[0]['loc']):
                 continue
             # Print kill status
-            print(f'Player {i} kills player {num}.')
+            print(f'Player {idx} kills player {num}.')
             # Update health status for next message
-            players[num]['status'] = 0
-        j = (j + 1)%len(moves)
-    if players[num]['status'] == 1:
+            killed = True
+    if not killed:
         print(f'Winner: player {num}!')
 except KeyboardInterrupt:
     print("exiting")
 
-players[num]['status'] = 0
-client.publish(f'players/{num}', str(players[num]), retain=True)
+players[num][-1]['status'] = 0
+client.publish(f'players/{num}', str(players[num][-1]), qos=2)
 client.disconnect()
 client.loop_stop() 
