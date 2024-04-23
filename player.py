@@ -2,6 +2,7 @@
 
 """
 File        : player.py
+Date        : 2023-04-23
 Authors     : Debika Samanta and Gautam Singh
 Purpose     : Client script to connect to board game server and handle gameplay.
 """
@@ -81,8 +82,6 @@ with open(f'{client_name}.txt') as fh:
     # Moves
     L = L[1:]
     moves = [[int(x) for x in l.split()] for l in L]
-# Dummy move at the end to determine winner
-moves.append([0, 0, 0])
 
 # Set up players' state
 for i in range(1,N+1):
@@ -174,7 +173,10 @@ try:
             if move_queue[0]['status'] == 0:
                 del_list.append(idx)
         for val in del_list:
+            # Remove from game state
             del players[val]
+            # Unsubscribe to player
+            client.unsubscribe(f'players/{val}')
         # Check if we are dead
         if players[num][0]['power'] == 1:
             continue
