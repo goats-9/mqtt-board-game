@@ -6,6 +6,7 @@ Date        : 2023-04-23
 Authors     : Debika Samanta and Gautam Singh
 Purpose     : Client script to connect to board game server and handle gameplay.
 """
+
 #########
 # Imports
 #########
@@ -26,6 +27,7 @@ server_port = 0     # Port number of server to connect to
 N = 0               # Total number of players
 moves = []          # List of moves made by the player
 killed = False      # Flag to determine whether the player has been killed
+alive = set()       # Set of players that are still alive
 
 def is_adjacent(p1: dict, p2: dict):
     """ Function to check whether locations `p1` and `p2` are adjacent to each other. """
@@ -48,14 +50,21 @@ def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMess
     global players,  num
     recv_msg = ast.literal_eval(message.payload.decode('utf-8'))
     player_num = int(message.topic.split('/')[-1])
-    print("recv", player_num, recv_msg)
+    # print("recv", player_num, recv_msg)
     # Ignore message if player is killed (deleted from game state)
     if player_num not in players.keys():
         return
-    # Push message to queue if id is larger
+    # Delete player if killed
+    if recv_msg['status'] == 0:
+        # Remove player from game state
+        if player_num in alive:
+            alive.remove(player_num)
+        # Unsubscribe to player topic
+        client.unsubscribe(f'players/{player_num}')
+    # Push message to queue if id is larger (or queue is empty)
     if not players[player_num]:
         players[player_num].append(recv_msg)
-    elif recv_msg['id'] > players[player_num][-1]['id'] or recv_msg['status'] != players[player_num][-1]['status']:
+    elif recv_msg['id'] > players[player_num][-1]['id']:
         players[player_num].append(recv_msg)
 
 # Initialization
@@ -82,8 +91,6 @@ with open(f'{client_name}.txt') as fh:
     # Moves
     L = L[1:]
     moves = [[int(x) for x in l.split()] for l in L]
-# Add a dummy move to decide the winner
-moves.append([0, 0, 0])
 
 # Set up players' state
 for i in range(1,N+1):
@@ -114,6 +121,7 @@ client.loop_start()
 
 # Subscribe to player topics
 for i in range(1,N+1):
+    alive.add(i)
     if i != num:
         client.subscribe(f'players/{i}', qos=2)
 
@@ -135,10 +143,13 @@ try:
         # Wait to receive opponents connection status
         time.sleep(1)
     # Players keep playing until they are killed
-    while len(players.keys()) > 1:
+    while len(alive) > 1 and not killed:
         # Play next move
         j = players[num][-1]['id'] + 1
-        move = moves[j]
+        # print(f'Player {num} Index {j}')
+        move = [0, 0, 0]
+        if j < len(moves) and len(moves[j]) == 3:
+            move = moves[j]
         # Create new status
         player_stat = {
             'id': j,
@@ -151,36 +162,22 @@ try:
         }
         # Update own game state
         players[num].append(player_stat)
-        # If player is dead, disconnect
-        if killed:
-            # Publish to other players
-            client.publish(f'players/{num}', str(player_stat), qos=2)
-            break
+        # Publish status to other players
+        client.publish(f'players/{num}', str(player_stat), qos=2)
         # Collect updated info
         while True:
-            # Publish status to other players
-            client.publish(f'players/{num}', str(player_stat), qos=2)
             # Count of players whose info for current move is available
             cnt = 0
-            for _, move_queue in players.items():
+            for p_num in alive:
+                move_queue = players[p_num]
                 while move_queue and move_queue[0]['id'] < j:
                     move_queue.popleft()
                 if move_queue and move_queue[0]['id'] == j:
                     cnt += 1
             # All players alive must have up-to-date status
-            if cnt == len(players.keys()):
+            if cnt == len(alive):
                 break
             time.sleep(1)
-        # Find dead players and delete them
-        del_list = []
-        for idx, move_queue in players.items():
-            if move_queue[0]['status'] == 0:
-                del_list.append(idx)
-        for val in del_list:
-            # Remove from game state
-            del players[val]
-            # Unsubscribe to player
-            client.unsubscribe(f'players/{val}')
         # Check if we are dead
         if players[num][0]['power'] == 1:
             continue
@@ -188,9 +185,12 @@ try:
             if idx == num or move_queue[0]['power'] == 0 or not is_adjacent(players[num][0]['loc'], move_queue[0]['loc']):
                 continue
             # Print kill status
-            print(f'Player {idx} kills Player {num} at turn {j + 1}.')
-            # Update health status for next message
+            print(f'Player {idx} killed Player {num} on Turn {j + 1}.')
+            # Update health status
             killed = True
+            # Publish kill status
+            player_stat['status'] = 0
+            client.publish(f'players/{num}', str(player_stat), qos=2)
             break
     if not killed:
         print(f'Winner: player {num}!')
