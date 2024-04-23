@@ -150,13 +150,15 @@ try:
         }
         # Update own game state
         players[num].append(player_stat)
-        # Publish to other players
-        client.publish(f'players/{num}', str(player_stat), qos=2)
         # If player is dead, disconnect
         if killed:
+            # Publish to other players
+            client.publish(f'players/{num}', str(player_stat), qos=2)
             break
         # Collect updated info
         while True:
+            # Publish status to other players
+            client.publish(f'players/{num}', str(player_stat), qos=2)
             # Count of players whose info for current move is available
             cnt = 0
             for _, move_queue in players.items():
@@ -167,6 +169,7 @@ try:
             # All players alive must have up-to-date status
             if cnt == len(players.keys()):
                 break
+            time.sleep(1)
         # Find dead players and delete them
         del_list = []
         for idx, move_queue in players.items():
