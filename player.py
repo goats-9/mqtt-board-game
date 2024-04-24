@@ -159,7 +159,7 @@ try:
             move = moves[j]
             
         # Create new status
-         player_stat = {
+        player_stat = {
             'id': j,  # Incremental ID for each move
             'loc': {
                 'x': move[0],  # X-coordinate of the move
