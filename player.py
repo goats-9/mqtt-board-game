@@ -10,6 +10,7 @@ Purpose     : Client script to connect to board game server and handle gameplay.
 #########
 # Imports
 #########
+
 import paho.mqtt.client as mqttClient
 import time
 import ast
@@ -31,7 +32,7 @@ killed = False      # Flag to determine whether the player has been killed
 def is_adjacent(p1: dict, p2: dict):
     """ Function to check whether locations `p1` and `p2` are adjacent to each other. """
     return abs(p1['x'] - p2['x']) + abs(p1['y'] - p2['y']) == 1
-
+    
 ######################
 # Callbacks for client
 ######################
@@ -65,10 +66,11 @@ def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMess
         players[player_num].append(recv_msg)
     elif recv_msg['id'] > players[player_num][-1]['id']:
         players[player_num].append(recv_msg)
-
-# Initialization
-
+        
+#####################
 # Argument parsing
+#####################
+
 parser = argparse.ArgumentParser(description='Script to connect to an MQTT server to play a board game.')
 parser.add_argument('--server_addr', dest='server_addr', default='127.0.0.1', help='IP address of the MQTT broker to connect to (default: 127.0.0.1)')
 parser.add_argument('--server_port', dest='server_port', default=1883, help='Port number on which the MQTT broker is running (default: 1833)', type=int)
@@ -78,6 +80,10 @@ args = parser.parse_args()
 num = args.num
 server_addr = args.server_addr
 server_port = args.server_port
+
+#####################
+# Initialization
+#####################
 
 # Set up some variables
 client_name = f'player-{num}'
@@ -96,23 +102,25 @@ for i in range(1,N+1):
     player_name = f'player-{i}'
     players[i] = deque()
 
+# Initialize player's starting state
 players[num].append({
-    'id': -1,
+    'id': -1,   # Indicates the initial state
     'loc': {
-        'x': 0,
-        'y': 0,      
+        'x': 0,  # Starting x-coordinate
+        'y': 0,  # Starting y-coordinate
     },
-    'power': 0,
-    'status': 1,
+    'power': 0, # Starting power level
+    'status': 1 # Player is initially alive
 })
 
+######################
 # Player flow
+######################
 
 # Setup player and connect to MQTT broker
 client = mqttClient.Client(mqttClient.CallbackAPIVersion.VERSION1, client_name)
 client.on_connect = on_connect
 client.on_message = on_message
-
 client.connect(server_addr, server_port)
 
 # Start player loop
@@ -122,7 +130,6 @@ client.loop_start()
 for i in range(1,N+1):
     if i != num:
         client.subscribe(f'players/{i}', qos=2)
-
 try:
     # Wait for players to be online
     while True:
@@ -140,29 +147,34 @@ try:
             break
         # Wait to receive opponents connection status
         time.sleep(1)
+        
     # Players keep playing until they are killed
     while len(players.keys()) > 1 and not killed:
         # Play next move
         j = players[num][-1]['id'] + 1
         # print(f'Player {num} Index {j}')
         move = [0, 0, 0]
+        # Check if move exists and is valid
         if j < len(moves) and len(moves[j]) == 3:
             move = moves[j]
+            
         # Create new status
-        player_stat = {
-            'id': j,
+         player_stat = {
+            'id': j,  # Incremental ID for each move
             'loc': {
-                'x': move[0],
-                'y': move[1],
+                'x': move[0],  # X-coordinate of the move
+                'y': move[1],  # Y-coordinate of the move
             },
-            'status': int(not killed),
-            'power': move[2]
+            'status': int(not killed),  # Status of the player (0: Dead, 1: Alive)
+            'power': move[2]            # Power level of the move
         }
+        
         # Update own game state
         players[num].append(player_stat)
         # Publish status to other players
         client.publish(f'players/{num}', str(player_stat), qos=2)
         # Collect updated info
+        
         while True:
             # Count of players whose info for current move is available
             cnt = 0
@@ -179,6 +191,8 @@ try:
         # Check if we are dead
         if players[num][0]['power'] == 1:
             continue
+            
+        # Check if any adjacent player has killed us    
         for idx, move_queue in players.items():
             if idx == num or move_queue[0]['power'] == 0 or not is_adjacent(players[num][0]['loc'], move_queue[0]['loc']):
                 continue
@@ -192,12 +206,16 @@ try:
             break
         # Wait for kill messages to be sent
         time.sleep(1)
+        # If player survived, declare as winner
     if not killed:
         print(f'Winner: player {num}!')
 except KeyboardInterrupt:
     print("exiting")
 
+# Set player's status to dead
 players[num][-1]['status'] = 0
+# Publish final status to server
 client.publish(f'players/{num}', str(players[num][-1]), qos=2)
+# Disconnect from broker and stop loop
 client.disconnect()
 client.loop_stop() 
