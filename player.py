@@ -27,7 +27,6 @@ server_port = 0     # Port number of server to connect to
 N = 0               # Total number of players
 moves = []          # List of moves made by the player
 killed = False      # Flag to determine whether the player has been killed
-alive = set()       # Set of players that are still alive
 
 def is_adjacent(p1: dict, p2: dict):
     """ Function to check whether locations `p1` and `p2` are adjacent to each other. """
@@ -47,7 +46,7 @@ def on_connect(client: mqttClient.Client, userdata, flags, rc):
 
 def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMessage):
     """ Callback to update game state. """
-    global players,  num
+    global players, num
     recv_msg = ast.literal_eval(message.payload.decode('utf-8'))
     player_num = int(message.topic.split('/')[-1])
     # print("recv", player_num, recv_msg)
@@ -57,10 +56,10 @@ def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMess
     # Delete player if killed
     if recv_msg['status'] == 0:
         # Remove player from game state
-        if player_num in alive:
-            alive.remove(player_num)
+        del players[player_num]
         # Unsubscribe to player topic
         client.unsubscribe(f'players/{player_num}')
+        return
     # Push message to queue if id is larger (or queue is empty)
     if not players[player_num]:
         players[player_num].append(recv_msg)
@@ -121,7 +120,6 @@ client.loop_start()
 
 # Subscribe to player topics
 for i in range(1,N+1):
-    alive.add(i)
     if i != num:
         client.subscribe(f'players/{i}', qos=2)
 
@@ -143,7 +141,7 @@ try:
         # Wait to receive opponents connection status
         time.sleep(1)
     # Players keep playing until they are killed
-    while len(alive) > 1 and not killed:
+    while len(players.keys()) > 1 and not killed:
         # Play next move
         j = players[num][-1]['id'] + 1
         # print(f'Player {num} Index {j}')
@@ -168,14 +166,14 @@ try:
         while True:
             # Count of players whose info for current move is available
             cnt = 0
-            for p_num in alive:
+            for p_num, move_queue in players.items():
                 move_queue = players[p_num]
                 while move_queue and move_queue[0]['id'] < j:
                     move_queue.popleft()
                 if move_queue and move_queue[0]['id'] == j:
                     cnt += 1
             # All players alive must have up-to-date status
-            if cnt == len(alive):
+            if cnt == len(players.keys()):
                 break
             time.sleep(1)
         # Check if we are dead
@@ -192,6 +190,8 @@ try:
             player_stat['status'] = 0
             client.publish(f'players/{num}', str(player_stat), qos=2)
             break
+        # Wait for kill messages to be sent
+        time.sleep(1)
     if not killed:
         print(f'Winner: player {num}!')
 except KeyboardInterrupt:
