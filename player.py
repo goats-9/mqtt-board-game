@@ -44,7 +44,7 @@ def on_connect(client: mqttClient.Client, userdata, flags, rc):
 
 def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMessage):
     """ Callback to update game state. """
-    global players,  num
+    global players, num
     recv_msg = ast.literal_eval(message.payload.decode('utf-8'))
     player_num = int(message.topic.split('/')[-1])
     print("recv", player_num, recv_msg)
@@ -109,9 +109,9 @@ client.on_message = on_message
 awshost = "a2ecittjwkr9t9-ats.iot.ap-south-1.amazonaws.com" #replace
 awsport = 8883
 
-caPath = "root_ca.pem" # Root certificate authority, comes from AWS (Replace)
-certPath = "player-certificate.pem.crt" #Replace
-keyPath = "player-private.pem.key" #Replace
+caPath = "./root-CA.crt" # Root certificate authority, comes from AWS (Replace)
+certPath = "./player.cert.pem" #Replace
+keyPath = "./player.private.key" #Replace
 
 client.tls_set(caPath, 
     certfile=certPath, 
@@ -122,21 +122,19 @@ client.tls_set(caPath,
 client.connect(awshost, port = awsport)  # connect to broker
 #AWS PART ENDS
 
-
-
 # Start player loop
 client.loop_start()
 
 # Subscribe to player topics
 for i in range(1,N+1):
     if i != num:
-        client.subscribe(f'players/{i}', qos=2)
+        client.subscribe(f'players/{i}')
 
 try:
     # Wait for players to be online
     while True:
         # Publish health/connection status
-        client.publish(f'players/{num}', str(players[num][-1]), qos=2)
+        client.publish(f'players/{num}', str(players[num][-1]))
         player_cnt = 0
         for idx, player in players.items():
             # Check player status at front of the queue
@@ -167,7 +165,7 @@ try:
         # Update own game state
         players[num].append(player_stat)
         # Publish to other players
-        client.publish(f'players/{num}', str(player_stat), qos=2)
+        client.publish(f'players/{num}', str(player_stat))
         # If player is dead, disconnect
         if killed:
             break
@@ -200,12 +198,14 @@ try:
             print(f'Player {idx} kills player {num} at turn {j}.')
             # Update health status for next message
             killed = True
+        # Wait for kill messages to be sent
+        time.sleep(1)
     if not killed:
         print(f'Winner: player {num}!')
 except KeyboardInterrupt:
     print("exiting")
 
 players[num][-1]['status'] = 0
-client.publish(f'players/{num}', str(players[num][-1]), qos=2)
+client.publish(f'players/{num}', str(players[num][-1]))
 client.disconnect()
 client.loop_stop() 
