@@ -81,8 +81,6 @@ with open(f'{client_name}.txt') as fh:
     # Moves
     L = L[1:]
     moves = [[int(x) for x in l.split()] for l in L]
-# Dummy move at the end to determine winner
-moves.append([0, 0, 0])
 
 # Set up players' state
 for i in range(1,N+1):
@@ -151,7 +149,10 @@ try:
     while len(players.keys()) > 1:
         # Play next move
         j = players[num][-1]['id'] + 1
-        move = moves[j]
+        move = [0, 0, 0]
+        # Check if move exists and is valid
+        if j < len(moves) and len(moves[j]) == 3:
+            move = moves[j]
         # Create new status
         player_stat = {
             'id': j,
