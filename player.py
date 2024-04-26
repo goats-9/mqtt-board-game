@@ -47,7 +47,7 @@ def on_message(client: mqttClient.Client, userdata, message: mqttClient.MQTTMess
     global players, num
     recv_msg = ast.literal_eval(message.payload.decode('utf-8'))
     player_num = int(message.topic.split('/')[-1])
-    print("recv", player_num, recv_msg)
+    # print("recv", player_num, recv_msg)
     # Ignore message if player is killed (deleted from game state)
     if player_num not in players.keys():
         return
@@ -179,6 +179,8 @@ try:
                     move_queue.popleft()
                 if move_queue and move_queue[0]['id'] == j:
                     cnt += 1
+            # Wait for opponents' status to update
+            time.sleep(1)
             # All players alive must have up-to-date status
             if cnt == len(players.keys()):
                 break
